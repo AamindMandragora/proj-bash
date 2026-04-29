@@ -357,7 +357,6 @@ function proj() {
 
       echo ""
 
-      # compute column widths
       local maxname=4 maxbranch=6
       while IFS= read -r name; do
         (( ${#name} > maxname )) && maxname=${#name}
@@ -365,83 +364,78 @@ function proj() {
         local path=$(__proj_field "$entry" 2)
         local host=$(__proj_field "$entry" 3)
         if [ "$host" = "local" ] && [ -d "$path/.git" ]; then
-          local branch
-          branch=$(git -C "$path" symbolic-ref --short HEAD 2>/dev/null) || branch="detached"
-          (( ${#branch} > maxbranch )) && maxbranch=${#branch}
+          local b
+          b=$(git -C "$path" symbolic-ref --short HEAD 2>/dev/null) || b="detached"
+          (( ${#b} > maxbranch )) && maxbranch=${#b}
         fi
       done <<< "$names"
 
-      # header
-      printf "  ${_dim}%-${maxname}s  %-${maxbranch}s  %-5s  %-5s  %s${_reset}\n" \
-        "NAME" "BRANCH" "DIRTY" "AHEAD" "LAST COMMIT"
-      printf "  ${_dim}%-${maxname}s  %-${maxbranch}s  %-5s  %-5s  %s${_reset}\n" \
+      echo -e "  ${_dim}$(printf "%-${maxname}s  %-${maxbranch}s  %-5s  %-5s  %s" "NAME" "BRANCH" "DIRTY" "SYNC" "LAST COMMIT")${_reset}"
+      echo -e "  ${_dim}$(printf "%-${maxname}s  %-${maxbranch}s  %-5s  %-5s  %s" \
         "$(printf '%0.s─' $(seq 1 $maxname))" \
         "$(printf '%0.s─' $(seq 1 $maxbranch))" \
-        "─────" "─────" "───────────"
+        "─────" "─────" "───────────")${_reset}"
 
       while IFS= read -r name; do
         local entry=$(__proj_get "$name")
         local path=$(__proj_field "$entry" 2)
         local host=$(__proj_field "$entry" 3)
-        local tags=$(__proj_tags "$entry")
+
+        local pname pbranch pdirty psync page
+
+        pname=$(printf "%-${maxname}s" "$name")
+        pname="${_bold}${pname}${_reset}"
 
         if [ "$host" != "local" ]; then
-          printf "  ${_bold}%-${maxname}s${_reset}  ${_yellow}%-${maxbranch}s${_reset}  %-5s  %-5s  %s\n" \
-            "$name" "remote" "—" "—" "${_dim}$host${_reset}"
-          continue
-        fi
-
-        if [ ! -d "$path/.git" ]; then
-          printf "  ${_bold}%-${maxname}s${_reset}  ${_dim}%-${maxbranch}s${_reset}  %-5s  %-5s  %s\n" \
-            "$name" "—" "—" "—" "${_dim}not a git repo${_reset}"
-          continue
-        fi
-
-        local branch dirty ahead behind age
-
-        branch=$(git -C "$path" symbolic-ref --short HEAD 2>/dev/null) || branch="detached"
-
-        dirty="no"
-        if ! git -C "$path" diff --quiet 2>/dev/null || ! git -C "$path" diff --cached --quiet 2>/dev/null; then
-          dirty="${_red}yes${_reset}"
+          pbranch="${_yellow}$(printf "%-${maxbranch}s" "remote")${_reset}"
+          pdirty="${_dim}$(printf "%-5s" "-")${_reset}"
+          psync="${_dim}$(printf "%-5s" "-")${_reset}"
+          page="${_dim}${host}${_reset}"
+        elif [ ! -d "$path/.git" ]; then
+          pbranch="${_dim}$(printf "%-${maxbranch}s" "-")${_reset}"
+          pdirty="${_dim}$(printf "%-5s" "-")${_reset}"
+          psync="${_dim}$(printf "%-5s" "-")${_reset}"
+          page="${_dim}not a git repo${_reset}"
         else
-          dirty="${_green}no${_reset}"
-        fi
+          local branch
+          branch=$(git -C "$path" symbolic-ref --short HEAD 2>/dev/null) || branch="detached"
+          pbranch="${_blue}$(printf "%-${maxbranch}s" "$branch")${_reset}"
 
-        ahead=$(git -C "$path" rev-list --count @{u}..HEAD 2>/dev/null || echo "0")
-        behind=$(git -C "$path" rev-list --count HEAD..@{u} 2>/dev/null || echo "0")
-
-        local sync=""
-        if (( ahead > 0 && behind > 0 )); then
-          sync="${_yellow}↑${ahead}↓${behind}${_reset}"
-        elif (( ahead > 0 )); then
-          sync="${_cyan}↑${ahead}${_reset}"
-        elif (( behind > 0 )); then
-          sync="${_red}↓${behind}${_reset}"
-        else
-          sync="${_dim}—${_reset}"
-        fi
-
-        local last_epoch now_epoch delta age=""
-        last_epoch=$(git -C "$path" log -1 --format=%ct 2>/dev/null)
-        if [ -n "$last_epoch" ]; then
-          now_epoch=$(date +%s)
-          delta=$(( now_epoch - last_epoch ))
-          if (( delta < 60 )); then
-            age="just now"
-          elif (( delta < 3600 )); then
-            age="$(( delta / 60 ))m ago"
-          elif (( delta < 86400 )); then
-            age="$(( delta / 3600 ))h ago"
-          elif (( delta < 604800 )); then
-            age="$(( delta / 86400 ))d ago"
+          if ! git -C "$path" diff --quiet 2>/dev/null || ! git -C "$path" diff --cached --quiet 2>/dev/null; then
+            pdirty="${_red}$(printf "%-5s" "yes")${_reset}"
           else
-            age="$(( delta / 604800 ))w ago"
+            pdirty="${_green}$(printf "%-5s" "no")${_reset}"
           fi
+
+          local ahead behind
+          ahead=$(git -C "$path" rev-list --count @{u}..HEAD 2>/dev/null || echo "0")
+          behind=$(git -C "$path" rev-list --count HEAD..@{u} 2>/dev/null || echo "0")
+          if (( ahead > 0 && behind > 0 )); then
+            psync="${_yellow}$(printf "%-5s" "+${ahead}-${behind}")${_reset}"
+          elif (( ahead > 0 )); then
+            psync="${_cyan}$(printf "%-5s" "+${ahead}")${_reset}"
+          elif (( behind > 0 )); then
+            psync="${_red}$(printf "%-5s" "-${behind}")${_reset}"
+          else
+            psync="${_dim}$(printf "%-5s" "-")${_reset}"
+          fi
+
+          local last_epoch now_epoch delta age=""
+          last_epoch=$(git -C "$path" log -1 --format=%ct 2>/dev/null)
+          if [ -n "$last_epoch" ]; then
+            now_epoch=$(date +%s)
+            delta=$(( now_epoch - last_epoch ))
+            if (( delta < 60 )); then age="just now"
+            elif (( delta < 3600 )); then age="$(( delta / 60 ))m ago"
+            elif (( delta < 86400 )); then age="$(( delta / 3600 ))h ago"
+            elif (( delta < 604800 )); then age="$(( delta / 86400 ))d ago"
+            else age="$(( delta / 604800 ))w ago"
+            fi
+          fi
+          page="${_dim}${age}${_reset}"
         fi
 
-        printf "  ${_bold}%-${maxname}s${_reset}  ${_blue}%-${maxbranch}s${_reset}  %-5b  %-5b  %s\n" \
-          "$name" "$branch" "$dirty" "$sync" "${_dim}$age${_reset}"
+        echo -e "  ${pname}  ${pbranch}  ${pdirty}  ${psync}  ${page}"
 
       done <<< "$names"
 
