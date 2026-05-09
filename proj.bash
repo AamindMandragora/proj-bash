@@ -329,8 +329,8 @@ function proj() {
       local out
       out=$(echo "$names" | fzf \
         --prompt="proj> " \
-        --header="Enter=cd | Ctrl-O=code" \
-        --expect=ctrl-o \
+        --header="Enter=cd | Ctrl-O=code | Ctrl-U=cursor" \
+        --expect=ctrl-o,ctrl-u)
         --preview='bash -c "__proj_preview_by_name {}"' \
         --preview-window=right:60%)
       local key=$(head -1 <<< "$out")
@@ -338,6 +338,8 @@ function proj() {
       [ -z "$selected" ] && return
       if [ "$key" = "ctrl-o" ]; then
         proj code "$selected"
+      elif [ "$key" = "ctrl-u" ]; then
+        proj cursor "$selected"
       else
         proj cd "$selected"
       fi
@@ -491,6 +493,27 @@ function proj() {
       fi
       ;;
 
+    cursor)
+      if [ -z "$2" ]; then
+        echo -e "${_dim}usage:${_reset} proj cursor ${_blue}<name>${_reset}"
+        return 1
+      fi
+      local entry=$(__proj_get "$2")
+      if [ -z "$entry" ]; then
+        echo -e "${_red}✗${_reset} not found: ${_bold}$2${_reset}"
+        return 1
+      fi
+      local path=$(__proj_field "$entry" 2)
+      local host=$(__proj_field "$entry" 3)
+      if [ "$host" = "local" ]; then
+        echo -e "${_green}▸${_reset} opening ${_bold}$2${_reset} in Cursor"
+        command cursor "$path"
+      else
+        echo -e "${_green}▸${_reset} opening ${_bold}$2${_reset} ${_dim}via${_reset} ${_yellow}$host${_reset} in Cursor"
+        command cursor --folder-uri "vscode-remote://ssh-remote+$host$path"
+      fi
+      ;;
+
     info)
       if [ -z "$2" ]; then
         echo -e "${_dim}usage:${_reset} proj info ${_blue}<name>${_reset}"
@@ -564,6 +587,7 @@ function proj() {
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "rename" "<old> <new>"           "rename project"
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "cd"     "<name>"               "cd + run hook"
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "code"   "<name>"               "open in VS Code"
+      printf "  ${_green}%-8s${_reset} %-27s %s\n" "cursor" "<name>"               "open in Cursor"
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "hook"   "<name> <cmd>"         "set cd hook"
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "unhook" "<name>"               "remove cd hook"
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "tag"    "<name> <t1,t2,...>"    "set tags"
@@ -592,10 +616,10 @@ _proj_complete() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-  local cmds="add del rename cd code hook unhook tag untag info ls status export import help"
+  local cmds="add del rename cd code cursor hook unhook tag untag info ls status export import help"
 
   case "${prev}" in
-    del|cd|code|rename|hook|unhook|tag|untag|info)
+    del|cd|code|cursor|rename|hook|unhook|tag|untag|info)
       local projects=$(awk -F':::' '{print $1}' "$PROJ_FILE" 2>/dev/null)
       COMPREPLY=( $(compgen -W "$projects" -- "$cur") )
       ;;
