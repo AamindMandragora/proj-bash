@@ -330,7 +330,7 @@ function proj() {
       out=$(echo "$names" | fzf \
         --prompt="proj> " \
         --header="Enter=cd | Ctrl-O=code | Ctrl-U=cursor" \
-        --expect=ctrl-o,ctrl-u)
+        --expect=ctrl-o,ctrl-u
         --preview='bash -c "__proj_preview_by_name {}"' \
         --preview-window=right:60%)
       local key=$(head -1 <<< "$out")
