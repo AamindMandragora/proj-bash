@@ -526,6 +526,14 @@ function proj() {
       local path=$(__proj_field "$entry" 2)
       local host=$(__proj_field "$entry" 3)
       if [ "$host" = "local" ]; then
+        if [ ! -d "$path" ]; then
+          if mkdir -p "$path" 2>/dev/null; then
+            echo -e "${_yellow}!${_reset} created ${_blue}$path${_reset}"
+          else
+            echo -e "${_red}✗${_reset} could not create ${_blue}$path${_reset}"
+            return 1
+          fi
+        fi
         echo -e "${_green}▸${_reset} opening ${_bold}$2${_reset} in VS Code"
         command code "$path"
       else
@@ -547,6 +555,14 @@ function proj() {
       local path=$(__proj_field "$entry" 2)
       local host=$(__proj_field "$entry" 3)
       if [ "$host" = "local" ]; then
+        if [ ! -d "$path" ]; then
+          if mkdir -p "$path" 2>/dev/null; then
+            echo -e "${_yellow}!${_reset} created ${_blue}$path${_reset}"
+          else
+            echo -e "${_red}✗${_reset} could not create ${_blue}$path${_reset}"
+            return 1
+          fi
+        fi
         echo -e "${_green}▸${_reset} opening ${_bold}$2${_reset} in Cursor"
         command cursor "$path"
       else
