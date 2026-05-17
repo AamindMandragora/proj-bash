@@ -458,6 +458,14 @@ function proj() {
       local host=$(__proj_field "$entry" 3)
       local hook=$(__proj_hook "$entry")
       if [ "$host" = "local" ]; then
+        if [ ! -d "$path" ]; then
+          if mkdir -p "$path" 2>/dev/null; then
+            echo -e "${_yellow}!${_reset} created ${_blue}$path${_reset}"
+          else
+            echo -e "${_red}✗${_reset} could not create ${_blue}$path${_reset}"
+            return 1
+          fi
+        fi
         echo -e "${_green}▸${_reset} ${_bold}$2${_reset} ${_dim}→${_reset} ${_blue}$path${_reset}"
         builtin cd "$path" && ls
         if [ -n "$hook" ]; then
@@ -466,8 +474,8 @@ function proj() {
         fi
       else
         echo -e "${_green}▸${_reset} ${_bold}$2${_reset} ${_dim}→${_reset} ${_yellow}$host${_reset}:${_blue}$path${_reset}"
-        local remote_cmd="cd $path && ls"
-        [ -n "$hook" ] && remote_cmd="cd $path && $hook && ls"
+        local remote_cmd="if [ ! -d '$path' ]; then mkdir -p '$path' && echo '  ! created $path'; fi && cd '$path' && ls"
+        [ -n "$hook" ] && remote_cmd="if [ ! -d '$path' ]; then mkdir -p '$path' && echo '  ! created $path'; fi && cd '$path' && $hook && ls"
         ssh -F ~/.ssh/config "$host" -t "bash --init-file <(echo '${remote_cmd}')"
       fi
       ;;
