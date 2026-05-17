@@ -2,7 +2,7 @@
 # ── proj — lightweight project manager ────────────────────────────────
 #
 # Install:
-#   git clone https://github.com/yourusername/proj ~/.proj
+#   git clone https://github.com/advay168/proj ~/.proj
 #   echo '[ -f ~/.proj/proj.bash ] && source ~/.proj/proj.bash' >> ~/.bashrc
 #
 # File format (~/.projects):
@@ -14,17 +14,20 @@
 #   proj add <name> <path> [host]    register a project
 #   proj del <name>                  remove a project
 #   proj rename <old> <new>          rename a project
+#   proj path <name> <new-path>      change project path
 #   proj cd <name>                   cd into project (runs hook)
 #   proj code <name>                 open in VS Code
+#   proj cursor <name>               open in Cursor
 #   proj hook <name> <command>       set a hook to run on cd
 #   proj unhook <name>               remove a project's hook
-#   proj tag <name> <tags>           set comma-separated tags
-#   proj untag <name>                remove all tags
+#   proj tag <name> <tag>            add a tag
+#   proj untag <name> <tag>          remove a tag
 #   proj info <name>                 show project details + git status
 #   proj ls [tag]                    fuzzy pick, optionally filtered by tag
 #   proj status [tag]                git status dashboard for all projects
+#   proj edit                        open config in $EDITOR
 #   proj export [file]               export config to file (default: stdout)
-#   proj import <file>               import config from file
+#   proj import <file|->             import config from file or stdin
 
 PROJ_FILE="${PROJ_FILE:-$HOME/.projects}"
 PROJ_DELIM=":::"
@@ -79,7 +82,6 @@ __proj_replace() {
   mv "$tmpfile" "$PROJ_FILE"
 }
 
-# return project names, optionally filtered by tag
 __proj_names() {
   local tag="$1"
   if [ -n "$tag" ]; then
@@ -92,7 +94,6 @@ __proj_names() {
   fi
 }
 
-# git status one-liner
 __proj_git_status() {
   local path="$1"
   [ ! -d "$path/.git" ] && echo "—" && return
@@ -134,7 +135,6 @@ __proj_git_status() {
   echo "$summary"
 }
 
-# fzf preview
 __proj_preview_by_name() {
   local name="$1"
   local projfile="${PROJ_FILE:-$HOME/.projects}"
@@ -297,8 +297,7 @@ function proj() {
 
     tag)
       if [ -z "$3" ]; then
-        echo -e "${_dim}usage:${_reset} proj tag ${_blue}<name>${_reset} ${_magenta}<tags>${_reset}"
-        echo -e "${_dim}  e.g.${_reset} proj tag logana ${_magenta}personal,cpp,systems${_reset}"
+        echo -e "${_dim}usage:${_reset} proj tag ${_blue}<name>${_reset} ${_magenta}<tag>${_reset}"
         return 1
       fi
       local entry=$(__proj_get "$2")
@@ -309,14 +308,23 @@ function proj() {
       local path=$(__proj_field "$entry" 2)
       local host=$(__proj_field "$entry" 3)
       local hook=$(__proj_hook "$entry")
-      local tags="$3"
+      local tags=$(__proj_tags "$entry")
+      if [[ ",$tags," == *",$3,"* ]]; then
+        echo -e "${_dim}already tagged:${_reset} ${_magenta}$3${_reset}"
+        return 0
+      fi
+      if [ -n "$tags" ]; then
+        tags="${tags},$3"
+      else
+        tags="$3"
+      fi
       __proj_replace "$2" "$(__proj_set_line "$2" "$path" "$host" "$hook" "$tags")"
-      echo -e "${_green}✓${_reset} tags set for ${_bold}$2${_reset}: ${_magenta}$tags${_reset}"
+      echo -e "${_green}✓${_reset} tagged ${_bold}$2${_reset} +${_magenta}$3${_reset}"
       ;;
 
     untag)
-      if [ -z "$2" ]; then
-        echo -e "${_dim}usage:${_reset} proj untag ${_blue}<name>${_reset}"
+      if [ -z "$3" ]; then
+        echo -e "${_dim}usage:${_reset} proj untag ${_blue}<name>${_reset} ${_magenta}<tag>${_reset}"
         return 1
       fi
       local entry=$(__proj_get "$2")
@@ -327,8 +335,16 @@ function proj() {
       local path=$(__proj_field "$entry" 2)
       local host=$(__proj_field "$entry" 3)
       local hook=$(__proj_hook "$entry")
-      __proj_replace "$2" "$(__proj_set_line "$2" "$path" "$host" "$hook" "")"
-      echo -e "${_green}✓${_reset} tags removed for ${_bold}$2${_reset}"
+      local tags=$(__proj_tags "$entry")
+      tags=$(echo "$tags" | awk -F',' -v t="$3" '{
+        out=""
+        for(i=1;i<=NF;i++) {
+          if($i != t) out = (out ? out "," : "") $i
+        }
+        print out
+      }')
+      __proj_replace "$2" "$(__proj_set_line "$2" "$path" "$host" "$hook" "$tags")"
+      echo -e "${_green}✓${_reset} untagged ${_bold}$2${_reset} -${_magenta}$3${_reset}"
       ;;
 
     ls)
@@ -605,6 +621,15 @@ function proj() {
       done < "$infile"
       echo -e "${_green}✓${_reset} imported ${_bold}$count${_reset} projects${skipped:+, ${_dim}skipped $skipped duplicates${_reset}}"
       ;;
+    
+    edit)
+      local tmpfile
+      tmpfile=$(mktemp)
+      cp "$PROJ_FILE" "$tmpfile"
+      ${EDITOR:-nano} "$tmpfile"
+      mv "$tmpfile" "$PROJ_FILE"
+      echo -e "${_green}✓${_reset} config updated"
+      ;;
 
     ""|help)
       echo ""
@@ -619,8 +644,8 @@ function proj() {
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "cursor" "<name>"               "open in Cursor"
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "hook"   "<name> <cmd>"         "set cd hook"
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "unhook" "<name>"               "remove cd hook"
-      printf "  ${_green}%-8s${_reset} %-27s %s\n" "tag"    "<name> <t1,t2,...>"    "set tags"
-      printf "  ${_green}%-8s${_reset} %-27s %s\n" "untag"  "<name>"               "remove tags"
+      printf "  ${_green}%-8s${_reset} %-27s %s\n" "tag"    "<name> <tag>"          "add a tag"
+      printf "  ${_green}%-8s${_reset} %-27s %s\n" "untag"  "<name> <tag>"          "remove a tag"
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "info"   "<name>"               "project details + git"
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "ls"     "[tag]"                "fuzzy pick (fzf)"
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "status" "[tag]"                "git status dashboard"
@@ -645,15 +670,25 @@ _proj_complete() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-  local cmds="add del rename cd code cursor hook unhook tag untag info path ls status export import help"
+  local cmds="add del rename cd code cursor hook unhook tag untag info path ls status export import help edit"
 
   case "${prev}" in
-    cd|code|del|cursor|hook|info|path|rename|tag|unhook|untag)
+    cd|code|del|cursor|hook|info|path|rename|tag|unhook)
       local projects=$(awk -F':::' '{print $1}' "$PROJ_FILE" 2>/dev/null)
       COMPREPLY=( $(compgen -W "$projects" -- "$cur") )
       ;;
+    untag)
+      local projname="${COMP_WORDS[2]}"
+      local entry=$(__proj_get "$projname" 2>/dev/null)
+      if [ -n "$entry" ]; then
+        local tags=$(__proj_tags "$entry" | tr ',' ' ')
+        COMPREPLY=( $(compgen -W "$tags" -- "$cur") )
+      else
+        local projects=$(awk -F':::' '{print $1}' "$PROJ_FILE" 2>/dev/null)
+        COMPREPLY=( $(compgen -W "$projects" -- "$cur") )
+      fi
+      ;;
     ls|status)
-      # suggest known tags
       local tags=$(awk -F':::' '{n=split($5,t,","); for(i=1;i<=n;i++) if(t[i]!="") print t[i]}' "$PROJ_FILE" 2>/dev/null | sort -u)
       COMPREPLY=( $(compgen -W "$tags" -- "$cur") )
       ;;
