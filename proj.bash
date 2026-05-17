@@ -665,40 +665,46 @@ function proj() {
 # ── autocomplete ─────────────────────────────────────────────────────
 
 _proj_complete() {
-  local cur prev
+  local cur
   COMPREPLY=()
   cur="${COMP_WORDS[COMP_CWORD]}"
-  prev="${COMP_WORDS[COMP_CWORD-1]}"
 
   local cmds="add del rename cd code cursor hook unhook tag untag info path ls status export import help edit"
 
-  case "${prev}" in
-    cd|code|del|cursor|hook|info|path|rename|tag|unhook)
-      local projects=$(awk -F':::' '{print $1}' "$PROJ_FILE" 2>/dev/null)
-      COMPREPLY=( $(compgen -W "$projects" -- "$cur") )
-      ;;
-    untag)
-      local projname="${COMP_WORDS[2]}"
-      local entry=$(__proj_get "$projname" 2>/dev/null)
-      if [ -n "$entry" ]; then
-        local tags=$(__proj_tags "$entry" | tr ',' ' ')
-        COMPREPLY=( $(compgen -W "$tags" -- "$cur") )
-      else
+  if (( COMP_CWORD == 1 )); then
+    COMPREPLY=( $(compgen -W "$cmds" -- "$cur") )
+    return
+  fi
+
+  local subcmd="${COMP_WORDS[1]}"
+
+  case "$subcmd" in
+    cd|code|del|cursor|hook|info|path|rename|tag)
+      if (( COMP_CWORD == 2 )); then
         local projects=$(awk -F':::' '{print $1}' "$PROJ_FILE" 2>/dev/null)
         COMPREPLY=( $(compgen -W "$projects" -- "$cur") )
       fi
       ;;
+    untag)
+      if (( COMP_CWORD == 2 )); then
+        local projects=$(awk -F':::' '{print $1}' "$PROJ_FILE" 2>/dev/null)
+        COMPREPLY=( $(compgen -W "$projects" -- "$cur") )
+      elif (( COMP_CWORD == 3 )); then
+        local projname="${COMP_WORDS[2]}"
+        local entry=$(__proj_get "$projname" 2>/dev/null)
+        if [ -n "$entry" ]; then
+          local tags=$(__proj_tags "$entry" | tr ',' ' ')
+          COMPREPLY=( $(compgen -W "$tags" -- "$cur") )
+        fi
+      fi
+      ;;
     ls|status)
-      local tags=$(awk -F':::' '{n=split($5,t,","); for(i=1;i<=n;i++) if(t[i]!="") print t[i]}' "$PROJ_FILE" 2>/dev/null | sort -u)
-      COMPREPLY=( $(compgen -W "$tags" -- "$cur") )
+      if (( COMP_CWORD == 2 )); then
+        local tags=$(awk -F':::' '{n=split($5,t,","); for(i=1;i<=n;i++) if(t[i]!="") print t[i]}' "$PROJ_FILE" 2>/dev/null | sort -u)
+        COMPREPLY=( $(compgen -W "$tags" -- "$cur") )
+      fi
       ;;
     import|export)
-      COMPREPLY=( $(compgen -f -- "$cur") )
-      ;;
-    add|help)
-      ;;
-    *)
-      COMPREPLY=( $(compgen -W "$cmds" -- "$cur") )
       ;;
   esac
 }
