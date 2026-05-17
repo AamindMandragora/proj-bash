@@ -233,6 +233,23 @@ function proj() {
       echo -e "${_green}✓${_reset} renamed ${_bold}$2${_reset} ${_dim}→${_reset} ${_bold}$3${_reset}"
       ;;
 
+    path)
+      if [ -z "$3" ]; then
+        echo -e "${_dim}usage:${_reset} proj path ${_blue}<name>${_reset} ${_green}<new-path>${_reset}"
+        return 1
+      fi
+      local entry=$(__proj_get "$2")
+      if [ -z "$entry" ]; then
+        echo -e "${_red}✗${_reset} not found: ${_bold}$2${_reset}"
+        return 1
+      fi
+      local host=$(__proj_field "$entry" 3)
+      local hook=$(__proj_hook "$entry")
+      local tags=$(__proj_tags "$entry")
+      __proj_replace "$2" "$(__proj_set_line "$2" "$3" "$host" "$hook" "$tags")"
+      echo -e "${_green}✓${_reset} path updated for ${_bold}$2${_reset}: ${_blue}$3${_reset}"
+      ;;
+
     del)
       if [ -n "$(__proj_get "$2")" ]; then
         sed -i "/^$2${PROJ_DELIM}/d" "$PROJ_FILE"
@@ -330,7 +347,7 @@ function proj() {
       out=$(echo "$names" | fzf \
         --prompt="proj> " \
         --header="Enter=cd | Ctrl-O=code | Ctrl-U=cursor" \
-        --expect=ctrl-o,ctrl-u
+        --expect=ctrl-o,ctrl-u \
         --preview='bash -c "__proj_preview_by_name {}"' \
         --preview-window=right:60%)
       local key=$(head -1 <<< "$out")
@@ -563,12 +580,15 @@ function proj() {
       ;;
 
     import)
-      if [ -z "$2" ]; then
-        echo -e "${_dim}usage:${_reset} proj import ${_blue}<file>${_reset}"
+      local infile="$2"
+      if [ -z "$infile" ]; then
+        echo -e "${_dim}usage:${_reset} proj import ${_blue}<file|->${_reset}"
         return 1
       fi
-      if [ ! -f "$2" ]; then
-        echo -e "${_red}✗${_reset} file not found: ${_bold}$2${_reset}"
+      if [ "$infile" = "-" ]; then
+        infile="/dev/stdin"
+      elif [ ! -f "$infile" ]; then
+        echo -e "${_red}✗${_reset} file not found: ${_bold}$infile${_reset}"
         return 1
       fi
       local count=0 skipped=0
@@ -582,7 +602,7 @@ function proj() {
           echo "$line" >> "$PROJ_FILE"
           (( count++ ))
         fi
-      done < "$2"
+      done < "$infile"
       echo -e "${_green}✓${_reset} imported ${_bold}$count${_reset} projects${skipped:+, ${_dim}skipped $skipped duplicates${_reset}}"
       ;;
 
@@ -593,6 +613,7 @@ function proj() {
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "add"    "<name> <path> [host]" "register project"
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "del"    "<name>"               "remove project"
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "rename" "<old> <new>"           "rename project"
+      printf "  ${_green}%-8s${_reset} %-27s %s\n" "path"   "<name> <new-path>"    "change project path"
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "cd"     "<name>"               "cd + run hook"
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "code"   "<name>"               "open in VS Code"
       printf "  ${_green}%-8s${_reset} %-27s %s\n" "cursor" "<name>"               "open in Cursor"
@@ -624,10 +645,10 @@ _proj_complete() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-  local cmds="add del rename cd code cursor hook unhook tag untag info ls status export import help"
+  local cmds="add del rename cd code cursor hook unhook tag untag info path ls status export import help"
 
   case "${prev}" in
-    del|cd|code|cursor|rename|hook|unhook|tag|untag|info)
+    cd|code|del|cursor|hook|info|path|rename|tag|unhook|untag)
       local projects=$(awk -F':::' '{print $1}' "$PROJ_FILE" 2>/dev/null)
       COMPREPLY=( $(compgen -W "$projects" -- "$cur") )
       ;;
